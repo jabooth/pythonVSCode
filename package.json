@@ -35,7 +35,8 @@
   "activationEvents": [
     "onLanguage:python",
     "onCommand:python.sortImports",
-    "onCommand:python.runtests"
+    "onCommand:python.runtests",
+    "onCommand:python.viewTestExplorer"
   ],
   "main": "./out/client/extension",
   "contributes": {

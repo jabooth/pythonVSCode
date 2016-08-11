@@ -11,12 +11,12 @@ export function generateErrorView(message: string, error: String | Error): strin
     }
     return `
             <style>
-            .message, .details {
-                color:red;
-            }
-            .message {
-                font-weight:bold;
-            }
+                .message, .details {
+                    color:red;
+                }
+                .message {
+                    font-weight:bold;
+                }
             </style>
             <body>
                 <div class="message">${message}</div><br/>
@@ -38,11 +38,11 @@ export function generateTestExplorerHtmlViewFiles(tests: TestFile[], currentStat
 export function generateTestExplorerHtmlView(testFolders: TestFolder[], currentStatus: TestStatus): string {
     let htmlForAllTestFolders = testFolders.reduce((html, testFolder) => html + generateHtmlForTestFolder(testFolder), '');
     return `
-        <div>
-            <ol class="ts-tree " id="">
-                ${htmlForAllTestFolders}
-            </ol>
-        </div>
+            <div class="treeview hover">
+                <ul>
+                    ${htmlForAllTestFolders}
+                </ul>
+            </div>
         `;
 }
 
@@ -97,9 +97,9 @@ export function generateHtmlForMenu(currentStatus: TestStatus, tests: Tests): st
     const someUnitTestsDidFail = tests.testFunctions.some(fn => fn.testFunction.passed === false);
     const someUnitTestsDidPass = tests.testFunctions.some(fn => fn.testFunction.passed === true);
 
-    if (someUnitTestsDidFail) {
-        menuItems.push(generateMenuItem('Run Failed Tests', 'python.runFailedTests', leftPos = leftPos + 10));
-    }
+    // if (someUnitTestsDidFail) {
+    //     menuItems.push(generateMenuItem('Run Failed Tests', 'python.runFailedTests', leftPos = leftPos + 10));
+    // }
     if (someUnitTestsDidFail || someUnitTestsDidPass) {
         menuItems.push(generateMenuItem('Run previous Tests', 'python.runPreviousTests', leftPos = leftPos + 10));
     }
@@ -110,59 +110,70 @@ export function generateHtmlForMenu(currentStatus: TestStatus, tests: Tests): st
         </div>
         <hr />
     `;
-
-    // return `
-    //         <div>
-    //             <span class="dropdown">
-    //                 <span>&nbsp;[Unit Test Options]</span>
-    //                 <div class="dropdown-content">
-    //                     ${currentStatus !== TestStatus.Error ? runTestsMenu : ''}
-    //                     <a href="${encodeURI('command:python.discoverUnitTests')}">Re-discover UnitTests</a>
-    //                 </div>
-    //             </span>
-    //         </div>
-    //         <hr />
-    //         `;
 }
 
 function generateHtmlForTestFileSuite(testFileSuite: TestSuite | TestFile): string {
     let functionHtml = testFileSuite.functions.reduce((html, fn) => html + generateHtmlForTestFunction(fn), '');
     let childTestHtml = testFileSuite.suites.reduce((html, fn) => html + generateHtmlForTestFileSuite(fn), '');
+    let testType = '';
+    let iconClass = '';
 
     // The property isInstance only exists on the TestSuite class and not TestFile
-    let testType = (testFileSuite as any).isInstance ? 'suite' : 'file';
-    let iconClass = '';
-    if (testFileSuite.passed === true) {
-        iconClass = 'success';
+    if (typeof (testFileSuite as any).isUnitTest === 'boolean') {
+        testType = 'suite';
+        iconClass = 'class';
     }
-    if (testFileSuite.passed === false) {
-        iconClass = 'fail';
+    else {
+        testType = 'file'
+        iconClass = 'fa fa-file-o';
+    }
+
+    let childrenHtml = '';
+    if ((functionHtml.length + childTestHtml.length) > 0) {
+        childrenHtml = `
+                        <ul>
+                            ${functionHtml}
+                            ${childTestHtml}
+                        </ul>
+                        `;
+    }
+
+    let counters = '';
+    //     <span class="success">10</span>
+    // <span class="fail">25</span>
+    // <span class="unknown">100</span>        
+    if (testFileSuite.functionsPassed > 0) {
+        counters += `<span class="success">${testFileSuite.functionsPassed}</span>`
+    }
+    if (testFileSuite.functionsFailed > 0) {
+        counters += `<span class="fail">${testFileSuite.functionsFailed}</span>`
     }
 
     return `
-            <li>
-                <label for="${encodeURIComponent(testFileSuite.rawName)}"
-                        title="${testFileSuite.message ? testFileSuite.message : ''}"
-                        class="parentNode ${iconClass}">
-                        ${testFileSuite.name}
-                        <span class="dropdown">
-                            <span>&nbsp;[Test]</span>
-                            <div class="dropdown-content">
-                                <a href="${encodeURI('command:python.runUnitTest?' + JSON.stringify([testType, testFileSuite.rawName]))}">Run this test</a>
-                            </div>
-                        </span>
-                </label>
-                <input type="checkbox" id="${encodeURIComponent(testFileSuite.rawName)}">
-                <ol>
-                    ${functionHtml}
-                    ${childTestHtml}
-                </ol>
-            </li>
-            `;
+        <li>
+          <input type="checkbox" id="${encodeURIComponent(testFileSuite.rawName)}">
+          <label for="${encodeURIComponent(testFileSuite.rawName)}" class="icon ${iconClass}"></label>
+          <label>
+            <span class="contextMenuItem" title="${testFileSuite.message ? testFileSuite.message : ''}">${testFileSuite.name}</span>
+            ${counters}
+            <span class="dropdown">
+                <span>&nbsp;[Test]</span>
+                <div class="dropdown-content">
+                    <a href="${encodeURI('command:python.runUnitTest?' + JSON.stringify([testType, testFileSuite.rawName]))}">Run this test</a>
+                </div>
+            </span>
+          </label>
+          ${childrenHtml}
+        </li>
+    `;
 }
 function generateHtmlForTestFolder(testFolder: TestFolder): string {
-    let testFilesHtml = testFolder.testFiles.reduce((html, fl) => html + generateHtmlForTestFileSuite(fl), '');
-    let childFoldersHtml = testFolder.folders.reduce((html, folder) => html + generateHtmlForTestFolder(folder), '');
+    let testFilesHtml = testFolder.testFiles.reduce((html, fl) => {
+        return html + generateHtmlForTestFileSuite(fl);
+    }, '');
+    let childFoldersHtml = testFolder.folders.reduce((html, folder) => {
+        return html + generateHtmlForTestFolder(folder);
+    }, '');
 
     let iconClass = '';
     if (testFolder.passed === true) {
@@ -180,53 +191,137 @@ function generateHtmlForTestFolder(testFolder: TestFolder): string {
                 `;
     }
 
-    return `
-            <li>
-                <label for="${encodeURIComponent(testFolder.rawName)}"
-                        class="parentNode ${iconClass}">
-                        ${testFolder.name}
-                        <span class="dropdown">
-                            <span>&nbsp;[Test]</span>
-                            <div class="dropdown-content">
-                                <a href="${encodeURI('command:python.runUnitTest?' + JSON.stringify(['folder', testFolder.rawName]))}">Run tests under this</a>
-                            </div>
-                        </span>
-                </label>
-                <input type="checkbox" id="${encodeURIComponent(testFolder.rawName)}">
-                <ol>
-                    ${childFoldersHtml}
-                    ${testFilesHtml}
-                </ol>
-            </li>
-            `;
-}
+    let childrenHtml = '';
+    if ((childFoldersHtml.length + testFilesHtml.length) > 0) {
+        childrenHtml = `
+                        <ul>
+                            ${childFoldersHtml}
+                            ${testFilesHtml}
+                        </ul>
+                        `;
+    }
 
+    let id = encodeURIComponent(testFolder.name);
+    let counters = '';
+    //     <span class="success">10</span>
+    // <span class="fail">25</span>
+    // <span class="unknown">100</span>        
+    if (testFolder.functionsPassed > 0) {
+        counters += `<span class="success">${testFolder.functionsPassed}</span>`
+    }
+    if (testFolder.functionsFailed > 0) {
+        counters += `<span class="fail">${testFolder.functionsFailed}</span>`
+    }
+
+    return `
+        <li>
+            <input type="checkbox" id="${id}" >
+            <label title="epand" for="${id}" class="icon folder open fa fa-folder-o" aria-hidden="true"></label>
+            <label title="collapse" for="${id}" class="icon folder open fa fa-folder-open-o" aria-hidden="true"></label>      
+            <label>
+                <span class="contextMenuItem" id="1">${testFolder.name}</span>
+                ${counters}
+                <span class="dropdown">
+                    <span>&nbsp;[Test]</span>
+                    <div class="dropdown-content">
+                        <a href="${encodeURI('command:python.runUnitTest?' + JSON.stringify(['folder', testFolder.rawName]))}">Run tests under this</a>
+                    </div>
+                </span>
+            </label>
+            ${childrenHtml}
+        </li>
+        `;
+}
+ 
 function generateHtmlForTestFunction(testFunction: TestFunction): string {
     // <li class="ts-file "><a class="added-async-link another-class" id="file3" title="this is a file link" href="#mainlink">File Main 3</a></li>
     let iconClass = '';
+    let counters = '';
     if (testFunction.passed === true) {
         iconClass = 'success';
+        counters += '<span class="icon success"></span>';
     }
     if (testFunction.passed === false) {
         iconClass = 'fail';
+        counters += '<span class="icon fail"></span>';
     }
 
+    //     <span class="success">10</span>
+    // <span class="fail">25</span>
+    // <span class="unknown">100</span>        
+
     return `
-            <li class="ts-file">
-                <label class="added-async-link another-class ${iconClass}"
-                    id="${encodeURIComponent(testFunction.rawName)}"
-                    title="${testFunction.message ? testFunction.message : ''}">
-                    ${testFunction.name}
-                    <span class="dropdown">
-                        <span>&nbsp;[Test]</span>
-                        <div class="dropdown-content">
-                            <a href="${encodeURI('command:python.runUnitTest?' + JSON.stringify(['function', testFunction.rawName]))}">Run this test</a>
-                        </div>
-                    </span>
-                </label>
-            </li>
-            `;
+        <li>
+          <label>
+            <span class="contextMenuItem" title="${testFunction.message ? testFunction.message : ''}"  id="${encodeURIComponent(testFunction.rawName)}">${testFunction.name}</span>
+            ${counters}
+            <span class="dropdown">
+                <span>[Test]</span>
+                <div class="dropdown-content">
+                    <a href="${encodeURI('command:python.runUnitTest?' + JSON.stringify(['function', testFunction.rawName]))}">Run this test</a>
+                </div>
+            </span>
+          </label>          
+        </li>    
+        `;
 }
+
+export const COMMON_STYLES = `
+    <style>
+        /* http://meyerweb.com/eric/tools/css/reset/ 
+           v2.0 | 20110126
+           License: none (public domain)
+        */
+
+        html, body, div, span, applet, object, iframe,
+        h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+        a, abbr, acronym, address, big, cite, code,
+        del, dfn, em, img, ins, kbd, q, s, samp,
+        small, strike, strong, sub, sup, tt, var,
+        b, u, i, center,
+        dl, dt, dd, ol, ul, li,
+        fieldset, form, label, legend,
+        table, caption, tbody, tfoot, thead, tr, th, td,
+        article, aside, canvas, details, embed, 
+        figure, figcaption, footer, header, hgroup, 
+        menu, nav, output, ruby, section, summary,
+        time, mark, audio, video {
+          margin: 0;
+          padding: 0;
+          border: 0;
+          font-size: 100%;
+          font: inherit;
+          vertical-align: baseline;
+        }
+        /* HTML5 display-role reset for older browsers */
+        article, aside, details, figcaption, figure, 
+        footer, header, hgroup, menu, nav, section {
+          display: block;
+        }
+        body {
+          line-height: 1;
+        }
+        ol, ul {
+          list-style: none;
+        }
+        blockquote, q {
+          quotes: none;
+        }
+        blockquote:before, blockquote:after,
+        q:before, q:after {
+          content: '';
+          content: none;
+        }
+        table {
+          border-collapse: collapse;
+          border-spacing: 0;
+        }
+
+        body {
+            margin:0 1em;
+        }
+    </style>
+`;
 
 export const MENU_STYLES = `
     <style>
@@ -355,112 +450,101 @@ export const TREE_STYLES = `
             display: block;
         }
 
-        ol.ts-tree {
-            padding: 0 0 0 1.5em;
+        .treeview {
+            float: left;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            -o-user-select: none;
+            user-select: none;
         }
-
-        ol.ts-tree body,
-        ol.ts-tree form,
-        ol.ts-tree ul,
-        ol.ts-tree li,
-        ol.ts-tree p,
-        ol.ts-tree h1,
-        ol.ts-tree h2,
-        ol.ts-tree h3,
-        ol.ts-tree h4,
-        ol.ts-tree h5 {
-            margin: 0;
-            padding: 0;
+        .treeview:hover input ~ label.icon,
+        .treeview.hover input ~ label.icon {
+            opacity: 1.0;
         }
-
-        ol.ts-tree img {
-            border: none;
-        }
-
-        ol.ts-tree p {
-            margin: 0 0 1em 0;
-        }
-
-        ol.ts-tree li {
-            position: relative;
-            margin:5px 0px 5px 0px;
-            margin-left: -1.5em;
+        .treeview ul {
             list-style: none;
-            list-style-type: none;
+            padding-left: 1em;
         }
-        ol.ts-tree li.ts-file a{
-            display:inline-block;
+        .treeview ul li {
+            margin:0.5em 0;
         }
-        ol.ts-tree li.ts-file a, ol.ts-tree li.ts-file label {
-            display: block;
-            padding-left: 1.3em;
-            background-position:0;
-            background-size: 1.2em;
-            text-decoration: none;
-            display: block;
+        .treeview ul li span {
         }
-
-        ol.ts-tree li.ts-file a.class {
-            background: url(../img/icons/classIcon.svg) 0 0 no-repeat;
-        }
-
-        ol.ts-tree li input {
-            position: absolute;
-            left: 0;
-            margin-left: 0;
-            opacity: 0;
-            z-index: 2;
-            cursor: pointer;
-            height: 1em;
-            width: 1em;
-            top: 0;
-        }
-
-        ol.ts-tree li input + ol > li {
+        .treeview input {
             display: none;
-            margin-left: -14px !important;
-            padding-left: 1px;
         }
-
-        ol.ts-tree li label {
+        .treeview input ~ ul {
+            display: none;
+        }
+        .treeview input:checked ~ ul {
+            display: inherit;
+        }
+        .treeview input ~ label.icon {
             cursor: pointer;
-            display: block;
-            padding-left: 1.3em;
         }
-
-        ol.ts-tree li label.parentNode {
+        .treeview input ~ label.icon {
+            display:block;
+            margin-left: -1.2em;
+            margin-top: 0em;
+            xwidth: 2em;
+            height: 1em;
+            position: absolute;
+        }
+        .treeview input ~ label.icon.fa-folder-open-o {
+            display:none;
+        }
+        .treeview input:checked ~ label.icon.fa-folder-o {
+            display:none;
+        }
+        .treeview input:checked ~ label.icon.fa-folder-open-o {
+            display:block;
+        }
+        .treeview span.fail, .treeview span.success, .treeview span.unknown {
+            border-radius:1em;
+            height:1em;
+            padding:0 0.3em;
+            display:inline-block;
+            text-align:center;
+        }
+        .treeview span.fail {
+            background-color:red;
+            color:white;
+        }
+        .treeview span.success {
+            background-color:green;
+            color:white;
+        }
+        .treeview span.unknown {
+            background-color:orange;
+            color:black;
+        }
+        
+        .treeview label.icon.class {
+            display:block;
+            height:1em;
+            width:1em;
             background: ${PYTHON_IMAGE_URL} 0 0.25em no-repeat;
             background-position:0;
             background-size: 1.2em;
         }
 
-        ol.ts-tree li label.success {
+        .treeview span.icon.success {
+            height:1em;
+            width:1em;
             background: ${SUCCESS_IMAGE_URL} 0 0.25em no-repeat;
             background-position:0;
             background-size: 1.15em;
+            font-size: 0.8em;
         }
 
-        ol.ts-tree li label.fail {
+        .treeview span.icon.fail {
+            height:1em;
+            width:1em;
             background: ${FAIL_IMAGE_URL} 0 0.25em no-repeat;
             background-position:0;
             background-size: 1.15em;
-        }
-
-        ol.ts-tree li input:checked + ol > li {
-            display: block;
-        }
-
-        ol.ts-tree li input:checked + ol > li:last-child {
-        }
-
-        ol.ts-tree.ts-tree-no-icon li.ts-file a {
-            background: none;
-            padding-left: 0;
-        }
-
-        ol.ts-tree.ts-tree-no-icon li label {
-            background: none;
-            padding-left: 0;
-        }
+            font-size: 0.8em;
+        }        
     </style>
 `;
