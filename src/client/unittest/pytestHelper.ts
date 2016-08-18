@@ -26,8 +26,8 @@ interface TestCaseResult {
 }
 
 export class TestManager extends BaseTestManager {
-    constructor(rootDirectory: string, outputChannel: vscode.OutputChannel) {
-        super(rootDirectory, outputChannel)
+    constructor(context: vscode.ExtensionContext, rootDirectory: string, outputChannel: vscode.OutputChannel) {
+        super(context, rootDirectory, outputChannel)
     }
     discoverTestsImpl(): Promise<Tests> {
         return discoverTests(this.rootDirectory);
@@ -36,7 +36,7 @@ export class TestManager extends BaseTestManager {
         return runTest(this.rootDirectory, this.tests, testsToRun, this.stdOut.bind(this));
     }
 }
-export function runTest(rootDirectory: string, tests: Tests, testsToRun?: TestsToRun, stdOut?: (output: string) => void): Promise<any> {
+export function runTest(rootDirectory: string, tests: Tests, testsToRun?: TestsToRun, stdOut?: (output: string) => void): Promise<Tests> {
     let testPaths = [];
     if (testsToRun && testsToRun.testFolder) {
         testPaths = testPaths.concat(testsToRun.testFolder.map(f => f.rawName));
@@ -119,7 +119,7 @@ export function discoverTests(rootDirectory: string): Promise<Tests> {
 }
 
 
-export function updateResultsFromLogFiles(tests: Tests, outputXmlFile: string, outputRawFile: string): Promise<any> {
+export function updateResultsFromLogFiles(tests: Tests, outputXmlFile: string, outputRawFile: string): Promise<Tests> {
     return updateResultsFromXmlLogFile(tests, outputXmlFile).then(() => {
         return updateResultsFromRawLogFile(tests, outputRawFile);
     }).then(() => {
@@ -241,7 +241,7 @@ function updateResultsFromRawLogFile(tests: Tests, outputRawFile: string): Promi
     return deferred.promise;
 }
 
-function updateResultsFromXmlLogFile(tests: Tests, outputXmlFile: string): Promise<any> {
+function updateResultsFromXmlLogFile(tests: Tests, outputXmlFile: string): Promise<Tests> {
     return new Promise<any>((resolve, reject) => {
         fs.readFile(outputXmlFile, 'utf8', (err, data) => {
             if (err) {

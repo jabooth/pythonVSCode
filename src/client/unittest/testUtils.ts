@@ -5,17 +5,14 @@ import * as path from 'path';
 
 export abstract class BaseTestManager {
     protected tests: Tests;
-    private lastErrorInGettingTests: any;
     private _status: TestStatus = TestStatus.Unknown;
 
     public get status(): TestStatus {
         return this._status;
     }
-
-    constructor(protected rootDirectory: string, private outputChannel: vscode.OutputChannel) {
+    constructor(private context: vscode.ExtensionContext, protected rootDirectory: string, private outputChannel: vscode.OutputChannel) {
         this._status = TestStatus.Unknown;
     }
-
     protected stdOut(output: string) {
         output.split(/\r?\n/g).forEach((line, index, lines) => {
             if (index === 0) {
@@ -33,10 +30,11 @@ export abstract class BaseTestManager {
     public reset() {
         this._status = TestStatus.Unknown;
         this.tests = null;
-        this.lastErrorInGettingTests = null;
     }
-
     public resetTestResults() {
+        if (!this.tests) {
+            return;
+        }
         this.tests.testFolders.forEach(f => {
             f.functionsDidNotRun = 0;
             f.functionsFailed = 0;
@@ -71,58 +69,47 @@ export abstract class BaseTestManager {
             testFile.functionsDidNotRun = 0;
         });
     }
-
-    private updateStatus() {
-        if (this.lastErrorInGettingTests) {
-            this._status = TestStatus.Error;
-            return;
-        }
-        if (this.tests) {
-            this._status = TestStatus.Idle;
-            return;
-        }
-    }
-
+    private discoverTestsPromise: Promise<Tests>;
     discoverTests(): Promise<Tests> {
-        if (this.tests) {
-            return Promise.resolve(this.tests);
-        }
-        if (this.lastErrorInGettingTests) {
-            return Promise.reject<Tests>(this.lastErrorInGettingTests);
+        if (this.discoverTestsPromise) {
+            return this.discoverTestsPromise;
         }
 
         this._status = TestStatus.Discovering;
 
-        return this.discoverTestsImpl()
+        this.discoverTestsPromise = this.discoverTestsImpl()
             .then(tests => {
                 this.tests = tests;
-                this.lastErrorInGettingTests = null;
-                this.updateStatus();
+                this._status = TestStatus.Idle
                 this.resetTestResults();
+                this.discoverTestsPromise = null;
                 return tests;
             }).catch(reason => {
                 this.tests = null;
-                this.lastErrorInGettingTests = reason;
-                this.updateStatus();
+                this._status = TestStatus.Error;
+                this.discoverTestsPromise = null;
                 return Promise.reject(reason);
             });
-    }
 
+        return this.discoverTestsPromise;
+    }
     abstract discoverTestsImpl(): Promise<Tests>;
-    public runTest(testsToRun: TestsToRun): Promise<TestFile[]> {
+    public runTest(testsToRun?: TestsToRun): Promise<Tests> {
         this.resetTestResults();
         this._status = TestStatus.Running;
-        return this.runTestImpl(testsToRun)
+
+        return this.discoverTests()
             .then(() => {
-                this.tests.testFiles;
+                return this.runTestImpl(testsToRun);
+            }).then(() => {
                 this._status = TestStatus.Idle;
-                return this.tests.testFiles;
+                return this.tests;
             }).catch(reason => {
-                this.updateStatus();
+                this._status = TestStatus.Error;
                 return Promise.reject(reason);
             });
     }
-    abstract runTestImpl(testsToRun:TestsToRun): Promise<any>;
+    abstract runTestImpl(testsToRun?: TestsToRun): Promise<any>;
 }
 
 export function extractBetweenDelimiters(content: string, startDelimiter: string, endDelimiter: string): string {

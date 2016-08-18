@@ -13,8 +13,8 @@ import * as vscode from 'vscode';
 import {extractBetweenDelimiters, convertFileToPackage, flattenTestFiles, updateResults, BaseTestManager} from './testUtils';
 
 export class TestManager extends BaseTestManager {
-    constructor(rootDirectory: string, outputChannel: vscode.OutputChannel) {
-        super(rootDirectory, outputChannel)
+    constructor(context: vscode.ExtensionContext, rootDirectory: string, outputChannel: vscode.OutputChannel) {
+        super(context, rootDirectory, outputChannel)
     }
     discoverTestsImpl(): Promise<Tests> {
         return discoverTests(this.rootDirectory, []);

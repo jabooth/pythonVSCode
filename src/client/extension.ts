@@ -14,12 +14,11 @@ import {PythonSignatureProvider} from './providers/signatureProvider';
 import {activateFormatOnSaveProvider} from './providers/formatOnSaveProvider';
 import * as path from 'path';
 import * as settings from './common/configSettings';
-import {activateUnitTestProvider} from './providers/testProvider';
 import * as telemetryHelper from './common/telemetry';
 import * as telemetryContracts from './common/telemetryContracts';
 import {PythonCodeActionsProvider} from './providers/codeActionProvider';
 import {activateSimplePythonRefactorProvider} from './providers/simpleRefactorProvider';
-import * as testExplorer from './unittest/testExplorer';
+import * as tests from './unittest/main';
 
 const PYTHON: vscode.DocumentFilter = { language: 'python', scheme: 'file' };
 let unitTestOutChannel: vscode.OutputChannel;
@@ -47,7 +46,6 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     sortImports.activate(context, formatOutChannel);
-    activateUnitTestProvider(context, pythonSettings, unitTestOutChannel);
     activateSimplePythonRefactorProvider(context, formatOutChannel);
     context.subscriptions.push(activateFormatOnSaveProvider(PYTHON, pythonSettings, formatOutChannel, vscode.workspace.rootPath));
 
@@ -67,6 +65,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(vscode.languages.registerDefinitionProvider(PYTHON, new PythonDefinitionProvider(context)));
     context.subscriptions.push(vscode.languages.registerReferenceProvider(PYTHON, new PythonReferenceProvider(context)));
     context.subscriptions.push(vscode.languages.registerCompletionItemProvider(PYTHON, new PythonCompletionItemProvider(context), '.'));
+
+    let symbolProvider = new PythonSymbolProvider(context, renameProvider.JediProxy);
     context.subscriptions.push(vscode.languages.registerDocumentSymbolProvider(PYTHON, new PythonSymbolProvider(context, renameProvider.JediProxy)));
     if (pythonSettings.devOptions.indexOf('DISABLE_SIGNATURE') === -1) {
         context.subscriptions.push(vscode.languages.registerSignatureHelpProvider(PYTHON, new PythonSignatureProvider(context, renameProvider.JediProxy), '(', ','));
@@ -78,7 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(vscode.languages.registerCodeActionsProvider(PYTHON, new PythonCodeActionsProvider(context)));
 
-    testExplorer.activate(context, unitTestOutChannel);
+    tests.activate(context, unitTestOutChannel, symbolProvider);
 }
 
 // this method is called when your extension is deactivated
