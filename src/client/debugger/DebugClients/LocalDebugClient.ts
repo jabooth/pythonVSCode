@@ -2,6 +2,7 @@ import {BaseDebugServer} from "../DebugServers/BaseDebugServer";
 import {LocalDebugServer} from "../DebugServers/LocalDebugServer";
 import {IPythonProcess, IPythonThread, IDebugServer} from "../Common/Contracts";
 import {DebugSession, OutputEvent} from "vscode-debugadapter";
+import {DebugProtocol} from "vscode-debugprotocol";
 import * as path from "path";
 import * as child_process from "child_process";
 import {LaunchRequestArguments} from "../Common/Contracts";
@@ -15,6 +16,12 @@ let LineByLineReader = require("line-by-line");
 
 const PTVS_FILES = ["visualstudio_ipython_repl.py", "visualstudio_py_debugger.py",
     "visualstudio_py_launcher.py", "visualstudio_py_repl.py", "visualstudio_py_util.py"];
+const VALID_DEBUG_OPTIONS = ["WaitOnAbnormalExit",
+                    "WaitOnNormalExit",
+                    "RedirectOutput",
+                    "DebugStdLib",
+                    "BreakOnSystemExitZero",
+                    "DjangoDebugging"];
 
 export class LocalDebugClient extends DebugClient {
     protected args: LaunchRequestArguments;
@@ -76,7 +83,13 @@ export class LocalDebugClient extends DebugClient {
                 pythonPath = this.args.pythonPath;
             }
             let environmentVariables = this.args.env ? this.args.env : {};
+            let newEnvVars = {};            
             if (environmentVariables) {
+                for (let setting in environmentVariables) {
+                    if (!newEnvVars[setting]) {
+                        newEnvVars[setting] = environmentVariables[setting];
+                    }
+                }
                 for (let setting in process.env) {
                     if (!environmentVariables[setting]) {
                         environmentVariables[setting] = process.env[setting];
@@ -85,14 +98,16 @@ export class LocalDebugClient extends DebugClient {
             }
             if (!environmentVariables.hasOwnProperty("PYTHONIOENCODING")) {
                 environmentVariables["PYTHONIOENCODING"] = "UTF-8";
+                newEnvVars["PYTHONIOENCODING"] = "UTF-8";
             }
             let currentFileName = module.filename;
             let ptVSToolsFilePath = this.getPTVSToolsFilePath();
             let launcherArgs = this.buildLauncherArguments();
 
             let args = [ptVSToolsFilePath, processCwd, dbgServer.port.toString(), "34806ad9-833a-4524-8cd6-18ca4aa74f14"].concat(launcherArgs);
-            if (this.args.externalConsole === true) {
-                open({ wait: false, app: [pythonPath].concat(args), cwd: processCwd, env: environmentVariables }).then(proc => {
+            if (this.args.console === 'externalTerminal') {
+                const isSudo = Array.isArray(this.args.debugOptions) && this.args.debugOptions.some(opt => opt === 'Sudo');
+                open({ wait: false, app: [pythonPath].concat(args), cwd: processCwd, env: environmentVariables, sudo: isSudo }).then(proc => {
                     this.pyProc = proc;
                     resolve();
                 }, error => {
@@ -102,7 +117,28 @@ export class LocalDebugClient extends DebugClient {
                     }
                     reject(error);
                 });
+                return;
+            }
 
+            if (this.args.console === 'integratedTerminal') {
+                const isSudo = Array.isArray(this.args.debugOptions) && this.args.debugOptions.some(opt => opt === 'Sudo');
+                const command = isSudo ? 'sudo' : pythonPath;
+                const commandArgs = isSudo ? [pythonPath].concat(args) : args;
+                const options = { cwd: processCwd, env: environmentVariables };
+                const termArgs: DebugProtocol.RunInTerminalRequestArguments  = {
+					kind: 'integrated',
+					title: "Python Debug Console",
+					cwd: processCwd,
+					args: [command].concat(commandArgs),
+                    env: newEnvVars as { [key: string]: string }
+				};
+                this.debugSession.runInTerminalRequest(termArgs, 5000, (response)=>{
+                    if (response.success){
+                        resolve()
+                    } else {
+                        reject(response);
+                    }
+                });
                 return;
             }
 
@@ -120,12 +156,14 @@ export class LocalDebugClient extends DebugClient {
             });
             this.pyProc.stderr.setEncoding("utf8");
             this.pyProc.stderr.on("data", error => {
-                // We don't need to display the errors as stderr output is being captured by debugger
+                // We generally don't need to display the errors as stderr output is being captured by debugger
                 // and it gets sent out to the debug client
                 
-                // This is necessary so we read the stdout of the python process
+                // Either way, we need some code in here so we read the stdout of the python process
                 // Else it just keep building up (related to issue #203 and #52)
-                let x = 0;
+                if (this.debugServer && !this.debugServer.IsRunning) {
+                    return reject(error);
+                }
             });
             this.pyProc.stdout.on("data", d => {
                 // This is necessary so we read the stdout of the python process
@@ -142,10 +180,17 @@ export class LocalDebugClient extends DebugClient {
     protected buildLauncherArguments(): string[] {
         let vsDebugOptions = "WaitOnAbnormalExit,WaitOnNormalExit,RedirectOutput";
         if (Array.isArray(this.args.debugOptions)) {
-            vsDebugOptions = this.args.debugOptions.join(",");
+            vsDebugOptions = this.args.debugOptions.filter(opt => VALID_DEBUG_OPTIONS.indexOf(opt) >= 0).join(",");
+        }
+        // If internal or external console, then don't re-direct the output
+        if (this.args.externalConsole === true || this.args.console === 'integratedTerminal' || this.args.console === 'externalTermainal'){
+            vsDebugOptions = vsDebugOptions.split(',').filter(opt => opt !== 'RedirectOutput').join(',');
         }
 
         let programArgs = Array.isArray(this.args.args) && this.args.args.length > 0 ? this.args.args : [];
         return [vsDebugOptions, this.args.program].concat(programArgs);
+        // Use this ability to debug unit tests or modules
+        // Adding breakpoints programatically to the first executable line of the test program
+        // return [vsDebugOptions, '-c', "import pytest;pytest.main(['/Users/donjayamanne/Desktop/Development/Python/Temp/MyEnvs/tests/test_another.py::Test_CheckMyApp::test_complex_check'])"].concat(programArgs);
     }
 }

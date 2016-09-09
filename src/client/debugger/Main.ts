@@ -17,9 +17,10 @@ import {IPythonBreakpoint, PythonBreakpointConditionKind, PythonBreakpointPassCo
 import {BaseDebugServer} from "./DebugServers/BaseDebugServer";
 import {DebugClient, DebugType} from "./DebugClients/DebugClient";
 import {CreateAttachDebugClient, CreateLaunchDebugClient} from "./DebugClients/DebugFactory";
-import {DjangoApp, LaunchRequestArguments, AttachRequestArguments, DebugFlags, DebugOptions, TelemetryEvent} from "./Common/Contracts";
+import {DjangoApp, LaunchRequestArguments, AttachRequestArguments, DebugFlags, DebugOptions, TelemetryEvent, PythonEvaluationResultFlags} from "./Common/Contracts";
 import * as telemetryContracts from "../common/telemetryContracts";
 import {validatePath} from './Common/Utils';
+import {isNotInstalledError} from '../common/helpers';
 
 const CHILD_ENUMEARATION_TIMEOUT = 5000;
 
@@ -39,7 +40,7 @@ export class PythonDebugger extends DebugSession {
     private debugClient: DebugClient;
     private configurationDone: Promise<any>;
     private configurationDonePromiseResolve: () => void;
-
+    private lastException: IPythonException;
     public constructor(debuggerLinesStartAt1: boolean, isServer: boolean) {
         super(debuggerLinesStartAt1, isServer === true);
         this._variableHandles = new Handles<IDebugVariable>();
@@ -56,6 +57,7 @@ export class PythonDebugger extends DebugSession {
         response.body.supportsConfigurationDoneRequest = true;
         response.body.supportsEvaluateForHovers = false;
         response.body.supportsFunctionBreakpoints = false;
+        response.body.supportsSetVariable = true;
         response.body.exceptionBreakpointFilters = [
             {
                 label: "All Exceptions",
@@ -120,6 +122,7 @@ export class PythonDebugger extends DebugSession {
         this.sendEvent(new StoppedEvent("step", pyThread.Id));
     }
     private onPythonException(pyThread: IPythonThread, ex: IPythonException) {
+        this.lastException = ex;
         this.sendEvent(new StoppedEvent("exception", pyThread.Id, `${ex.TypeName}, ${ex.Description}`));
         this.sendEvent(new OutputEvent(`${ex.TypeName}, ${ex.Description}\n`, "stderr"));
     }
@@ -136,6 +139,9 @@ export class PythonDebugger extends DebugSession {
         this.debuggerHasLoaded = true;
         this.sendResponse(this.entryResponse);
         this.debuggerLoadedPromiseResolve();
+        if (this.launchArgs && !this.launchArgs.console) {
+            this.launchArgs.console = this.launchArgs.externalConsole === true ? 'externalTerminal' : 'none';
+        }
         if (this.launchArgs && this.launchArgs.stopOnEntry === true) {
             this.sendEvent(new StoppedEvent("entry", pyThread.Id));
         }
@@ -168,7 +174,7 @@ export class PythonDebugger extends DebugSession {
             return this.sendErrorResponse(response, 2001, `File does not exist. "${args.program}"`);
         }
         this.sendEvent(new TelemetryEvent(telemetryContracts.Debugger.Load, {
-            Debug_ExternalConsole: args.externalConsole === true ? "true" : "false",
+            Debug_Console: args.console,
             Debug_DebugOptions: args.debugOptions.join(","),
             Debug_DJango: args.debugOptions.indexOf("DjangoDebugging") >= 0 ? "true" : "false",
             Debug_HasEnvVaraibles: args.env && typeof args.env === "object" ? "true" : "false"
@@ -176,7 +182,7 @@ export class PythonDebugger extends DebugSession {
 
         this.launchArgs = args;
         this.debugClient = CreateLaunchDebugClient(args, this);
-
+        //this.debugClient.on('exit', () => this.sendEvent(new TerminatedEvent()));
         this.configurationDone = new Promise(resolve => {
             this.configurationDonePromiseResolve = resolve;
         });
@@ -190,7 +196,7 @@ export class PythonDebugger extends DebugSession {
             this.sendEvent(new OutputEvent(error + "\n", "stderr"));
             response.success = false;
             let errorMsg = typeof error === "string" ? error : ((error.message && error.message.length > 0) ? error.message : error + '');
-            if ((<any>error).code === 'ENOENT' || (<any>error).code === 127) {
+            if (isNotInstalledError(error)) {
                 errorMsg = `Failed to launch the Python Process, please validate the path '${this.launchArgs.pythonPath}'`;
             }
             this.sendErrorResponse(response, 200, errorMsg);
@@ -199,7 +205,7 @@ export class PythonDebugger extends DebugSession {
     protected unhandledProcessError(error: any) {
         if (!error) { return; }
         let errorMsg = typeof error === "string" ? error : ((error.message && error.message.length > 0) ? error.message : "");
-        if ((<any>error).code === 'ENOENT' || (<any>error).code === 127) {
+        if (isNotInstalledError(error)) {
             errorMsg = `Failed to launch the Python Process, please validate the path '${this.launchArgs.pythonPath}'`;
         }
         if (errorMsg.length > 0) {
@@ -247,6 +253,12 @@ export class PythonDebugger extends DebugSession {
             this.launchArgs.debugOptions.indexOf(DebugOptions.DjangoDebugging) >= 0) {
             isDjangoFile = filePath.toUpperCase().endsWith(".HTML");
         }
+        // Todo: Remote DJango debugging
+        // if (this.attachArgs != null &&
+        //     Array.isArray(this.attachArgs.debugOptions) &&
+        //     this.attachArgs.debugOptions.indexOf(DebugOptions.DjangoDebugging) >= 0) {
+        //     isDjangoFile = filePath.toUpperCase().endsWith(".HTML");
+        // }
 
         condition = typeof condition === "string" ? condition : "";
 
@@ -349,8 +361,18 @@ export class PythonDebugger extends DebugSession {
     /** converts the remote path to local path */
     protected convertDebuggerPathToClient(remotePath: string): string {
         if (this.attachArgs && this.attachArgs.localRoot && this.attachArgs.remoteRoot) {
-            // get the part of the path that is relative to the source root
-            const pathRelativeToSourceRoot = path.relative(this.attachArgs.remoteRoot, remotePath);
+            let pathRelativeToSourceRoot = '';
+            // It is possible we're dealing with cross platform debugging
+            // If so, then path.relative won't work :(
+            if (remotePath.toUpperCase().startsWith(this.attachArgs.remoteRoot.toUpperCase())) {
+                pathRelativeToSourceRoot = remotePath.substring(this.attachArgs.remoteRoot.length).trim();
+            } else {
+                // get the part of the path that is relative to the source root
+                pathRelativeToSourceRoot = path.relative(this.attachArgs.remoteRoot, remotePath).trim();
+            }
+            if (pathRelativeToSourceRoot.startsWith(path.sep)){
+                pathRelativeToSourceRoot = pathRelativeToSourceRoot.substring(1);
+            }
             // resolve from the local source root
             return path.resolve(this.attachArgs.localRoot, pathRelativeToSourceRoot);
         } else {
@@ -462,6 +484,27 @@ export class PythonDebugger extends DebugSession {
             }
 
             let scopes = [];
+            if (typeof this.lastException === 'object' && this.lastException !== null && this.lastException.Description.length > 0) {
+                let values: IDebugVariable = {
+                    variables: [{
+                        Frame: frame, Expression: 'Type',
+                        Flags: PythonEvaluationResultFlags.Raw,
+                        StringRepr: this.lastException.TypeName,
+                        TypeName: 'string', IsExpandable: false, HexRepr: '',
+                        ChildName: '', ExceptionText: '', Length: 0, Process: null
+                    },
+                        {
+                            Frame: frame, Expression: 'Description',
+                            Flags: PythonEvaluationResultFlags.Raw,
+                            StringRepr: this.lastException.Description,
+                            TypeName: 'string', IsExpandable: false, HexRepr: '',
+                            ChildName: '', ExceptionText: '', Length: 0, Process: null
+                        }],
+                    evaluateChildren: false
+                };
+                scopes.push(new Scope("Exception", this._variableHandles.create(values), false));
+                this.lastException = null;
+            }
             if (Array.isArray(frame.Locals) && frame.Locals.length > 0) {
                 let values: IDebugVariable = { variables: frame.Locals };
                 scopes.push(new Scope("Local", this._variableHandles.create(values), false));
@@ -550,7 +593,9 @@ export class PythonDebugger extends DebugSession {
                 mode = enum_EXCEPTION_STATE.BREAK_MODE_ALWAYS;
             }
             let exToIgnore = null;
-            let exceptionHandling = this.launchArgs.exceptionHandling;
+            let exceptionHandling = this.launchArgs ? this.launchArgs.exceptionHandling : null;
+            // Todo: exception handling for remote debugging
+            // let exceptionHandling = this.launchArgs ? this.launchArgs.exceptionHandling : this.attachArgs.exceptionHandling;
             if (exceptionHandling) {
                 exToIgnore = new Map<string, enum_EXCEPTION_STATE>();
                 if (Array.isArray(exceptionHandling.ignore)) {
@@ -576,6 +621,29 @@ export class PythonDebugger extends DebugSession {
     protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments) {
         this.stopDebugServer();
         this.sendResponse(response);
+    }
+    protected setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments) {
+        let variable = this._variableHandles.get(args.variablesReference).variables.find(v => v.ChildName === args.name);
+        if (!variable) {
+            return this.sendErrorResponse(response, 2000, 'Variable reference not found');
+        }
+        this.pythonProcess.ExecuteText(`${args.name} = ${args.value}`, PythonEvaluationResultReprKind.Normal, variable.Frame).then(result => {
+            return this.pythonProcess.ExecuteText(args.name, PythonEvaluationResultReprKind.Normal, variable.Frame).then(result => {
+                let variablesReference = 0;
+                // If this value can be expanded, then create a vars ref for user to expand it
+                if (result.IsExpandable) {
+                    const parentVariable: IDebugVariable = {
+                        variables: [result],
+                        evaluateChildren: true
+                    };
+                    variablesReference = this._variableHandles.create(parentVariable);
+                }
+                response.body = {
+                    value: result.StringRepr
+                };
+                this.sendResponse(response);
+            });
+        }).catch(error => this.sendErrorResponse(response, 2000, error));
     }
 }
 

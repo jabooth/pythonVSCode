@@ -19,7 +19,8 @@ import * as telemetryContracts from './common/telemetryContracts';
 import {PythonCodeActionsProvider} from './providers/codeActionProvider';
 import {activateSimplePythonRefactorProvider} from './providers/simpleRefactorProvider';
 import {activateSetInterpreterProvider} from './providers/setInterpreterProvider';
-import * as tests from './unittest/main';
+import {activateExecInTerminalProvider} from './providers/execInTerminalProvider'
+import * as tests from './unittests/main';
 
 const PYTHON: vscode.DocumentFilter = { language: 'python', scheme: 'file' };
 let pythonOutputChannel: vscode.OutputChannel;
@@ -47,6 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     sortImports.activate(context, formatOutChannel);
     activateSetInterpreterProvider();
+    activateExecInTerminalProvider();
     activateSimplePythonRefactorProvider(context, formatOutChannel);
     context.subscriptions.push(activateFormatOnSaveProvider(PYTHON, pythonSettings, formatOutChannel, vscode.workspace.rootPath));
 

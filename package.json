@@ -1,8 +1,8 @@
 {
   "name": "python",
   "displayName": "Python",
-  "description": "Linting, Debugging (multi-threaded, remote), Intellisense, code formatting, refactoring, snippets, and more.",
-  "version": "0.3.21",
+  "description": "Linting, Debugging (multi-threaded, remote), Intellisense, code formatting, refactoring, unit tests, snippets, and more.",
+  "version": "0.3.22",
   "publisher": "donjayamanne",
   "author": {
     "name": "Don Jayamanne",
@@ -34,12 +34,15 @@
   ],
   "activationEvents": [
     "onLanguage:python",
+    "onCommand:python.execInTerminal",
     "onCommand:python.sortImports",
     "onCommand:python.runtests",
     "onCommand:python.setInterpreter",
-    "onCommand:python.viewTests",
-    "onCommand:python.discoverTests",
-    "onCommand:python.runFailedTests"
+    "onCommand:python.viewTestUI",
+    "onCommand:python.viewTestOutput",
+    "onCommand:python.selectAndRunTestMethod",
+    "onCommand:python.runFailedTests",
+    "onCommand:python.execSelectionInTerminal"
   ],
   "main": "./out/client/extension",
   "contributes": {
@@ -57,7 +60,12 @@
       },
       {
         "command": "python.runtests",
-        "title": "Run Unit Tests",
+        "title": "Run All Unit Tests",
+        "category": "Python"
+      },
+      {
+        "command": "python.execInTerminal",
+        "title": "Run Python file in Terminal",
         "category": "Python"
       },
       {
@@ -76,18 +84,23 @@
         "category": "Refactor"
       },
       {
-        "command": "python.viewTests",
-        "title": "View Test UI",
+        "command": "python.viewTestOutput",
+        "title": "Show Unit Test Output",
         "category": "Python"
       },
       {
-        "command": "python.discoverTests",
-        "title": "Discover Unit Tests",
+        "command": "python.selectAndRunTestMethod",
+        "title": "Run Unit Test Method ...",
         "category": "Python"
       },
       {
         "command": "python.runFailedTests",
         "title": "Run Failed Unit Tests",
+        "category": "Python"
+      },
+      {
+        "command": "python.execSelectionInTerminal",
+        "title": "Run Selection in Python Terminal",
         "category": "Python"
       }
     ],
@@ -104,11 +117,27 @@
           "title": "Refactor: Extract Method",
           "group": "Refactor",
           "when": "editorHasSelection && editorLangId == python"
+        },
+        {
+          "command": "python.execSelectionInTerminal",
+          "group": "Python",
+          "when": "editorHasSelection && editorLangId == python"
+        },
+        {
+          "when": "resourceLangId == python",
+          "command": "python.execInTerminal",
+          "group": "Python"
         }
       ],
       "explorer/context": [
         {
+          "when": "resourceLangId == python",
           "command": "python.runtests",
+          "group": "Python"
+        },
+        {
+          "when": "resourceLangId == python",
+          "command": "python.execInTerminal",
           "group": "Python"
         }
       ]
@@ -156,9 +185,14 @@
               },
               "externalConsole": {
                 "type": "boolean",
-                "description": "Launch debug target in external console window.",
+                "description": "Deprecated: use 'console' attribute instead.",
                 "default": false
               },
+              "console": {
+								"enum": [ "none", "integratedTerminal", "externalTerminal" ],
+								"description": "Where to launch the debug target: internal console, integrated terminal, or external terminal.",
+								"default": "none"
+							},
               "cwd": {
                 "type": "string",
                 "description": "Absolute path to the working directory of the program being debugged. Default is the root directory of the file (leave null).",
@@ -175,7 +209,8 @@
                     "RedirectOutput",
                     "DebugStdLib",
                     "BreakOnSystemExitZero",
-                    "DjangoDebugging"
+                    "DjangoDebugging",
+                    "Sudo"
                   ]
                 },
                 "default": [
@@ -269,13 +304,26 @@
             ]
           },
           {
-            "name": "Python Console App",
+            "name": "Integrated Terminal/Console",
             "type": "python",
             "request": "launch",
             "stopOnEntry": true,
             "pythonPath": "${config.python.pythonPath}",
             "program": "${file}",
-            "externalConsole": true,
+            "console": "integratedTerminal", 
+            "debugOptions": [
+              "WaitOnAbnormalExit",
+              "WaitOnNormalExit"
+            ]
+          },
+          {
+            "name": "External Terminal/Console",
+            "type": "python",
+            "request": "launch",
+            "stopOnEntry": true,
+            "pythonPath": "${config.python.pythonPath}",
+            "program": "${file}",
+            "console": "externalTerminal", 
             "debugOptions": [
               "WaitOnAbnormalExit",
               "WaitOnNormalExit"
@@ -300,6 +348,21 @@
             ]
           },
           {
+            "name": "Flask",
+            "type": "python",
+            "request": "launch",
+            "stopOnEntry": true,
+            "pythonPath": "${config.python.pythonPath}",
+            "program": "${workspaceRoot}/run.py",
+            "args": [
+            ],
+            "debugOptions": [
+              "WaitOnAbnormalExit",
+              "WaitOnNormalExit",
+              "RedirectOutput"
+            ]
+          },
+          {
             "name": "Watson",
             "type": "python",
             "request": "launch",
@@ -318,7 +381,7 @@
             ]
           },
           {
-            "name": "Attach",
+            "name": "Attach (Remote Debug)",
             "type": "python",
             "request": "attach",
             "localRoot": "${workspaceRoot}",
@@ -591,6 +654,19 @@
           "type": "array",
           "description": "Arguments passed in. Each argument is a separate item in the array.",
           "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "python.unitTest.unittestEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to enable or disable unit testing using unittest."
+        },
+        "python.unitTest.unittestArgs": {
+          "type": "array",
+          "description": "Arguments passed in. Each argument is a separate item in the array.",
+          "default": ["-v"],
           "items": {
             "type": "string"
           }
