@@ -19,7 +19,7 @@ import {DebugClient, DebugType} from "./DebugClients/DebugClient";
 import {CreateAttachDebugClient, CreateLaunchDebugClient} from "./DebugClients/DebugFactory";
 import {DjangoApp, LaunchRequestArguments, AttachRequestArguments, DebugFlags, DebugOptions, TelemetryEvent, PythonEvaluationResultFlags} from "./Common/Contracts";
 import * as telemetryContracts from "../common/telemetryContracts";
-import {validatePath} from './Common/Utils';
+import {validatePath, validatePathSync} from './Common/Utils';
 import {isNotInstalledError} from '../common/helpers';
 
 const CHILD_ENUMEARATION_TIMEOUT = 5000;
@@ -41,6 +41,7 @@ export class PythonDebugger extends DebugSession {
     private configurationDone: Promise<any>;
     private configurationDonePromiseResolve: () => void;
     private lastException: IPythonException;
+    private _supportsRunInTerminalRequest:boolean;
     public constructor(debuggerLinesStartAt1: boolean, isServer: boolean) {
         super(debuggerLinesStartAt1, isServer === true);
         this._variableHandles = new Handles<IDebugVariable>();
@@ -68,7 +69,9 @@ export class PythonDebugger extends DebugSession {
                 filter: "uncaught"
             }
         ];
-
+        if (typeof args.supportsRunInTerminalRequest === 'boolean') {
+			this._supportsRunInTerminalRequest = args.supportsRunInTerminalRequest;
+		}        
         this.sendResponse(response);
         // now we are ready to accept breakpoints -> fire the initialized event to give UI a chance to set breakpoints
         this.sendEvent(new InitializedEvent());
@@ -141,6 +144,11 @@ export class PythonDebugger extends DebugSession {
         this.debuggerLoadedPromiseResolve();
         if (this.launchArgs && !this.launchArgs.console) {
             this.launchArgs.console = this.launchArgs.externalConsole === true ? 'externalTerminal' : 'none';
+        }
+        // If launching the integrated terminal is not supported, then defer to external terminal 
+        // that will be displayed by our own code
+        if (!this._supportsRunInTerminalRequest && this.launchArgs && this.launchArgs.console === 'integratedTerminal'){
+            this.launchArgs.console = 'externalTerminal';
         }
         if (this.launchArgs && this.launchArgs.stopOnEntry === true) {
             this.sendEvent(new StoppedEvent("entry", pyThread.Id));
@@ -361,20 +369,26 @@ export class PythonDebugger extends DebugSession {
     /** converts the remote path to local path */
     protected convertDebuggerPathToClient(remotePath: string): string {
         if (this.attachArgs && this.attachArgs.localRoot && this.attachArgs.remoteRoot) {
-            let pathRelativeToSourceRoot = '';
-            // It is possible we're dealing with cross platform debugging
-            // If so, then path.relative won't work :(
-            if (remotePath.toUpperCase().startsWith(this.attachArgs.remoteRoot.toUpperCase())) {
-                pathRelativeToSourceRoot = remotePath.substring(this.attachArgs.remoteRoot.length).trim();
-            } else {
-                // get the part of the path that is relative to the source root
-                pathRelativeToSourceRoot = path.relative(this.attachArgs.remoteRoot, remotePath).trim();
+            let pathRelativeToSourceRoot = path.relative(this.attachArgs.remoteRoot, remotePath);
+            let clientPath = path.resolve(this.attachArgs.localRoot, pathRelativeToSourceRoot);
+            if (validatePathSync(clientPath)){
+                return clientPath;
             }
-            if (pathRelativeToSourceRoot.startsWith(path.sep)){
-                pathRelativeToSourceRoot = pathRelativeToSourceRoot.substring(1);
+            else {
+                // It is possible we're dealing with cross platform debugging
+                // If so, then path.relative won't work :(
+                if (remotePath.toUpperCase().startsWith(this.attachArgs.remoteRoot.toUpperCase())) {
+                    pathRelativeToSourceRoot = remotePath.substring(this.attachArgs.remoteRoot.length).trim();
+                } else {
+                    // get the part of the path that is relative to the source root
+                    pathRelativeToSourceRoot = path.relative(this.attachArgs.remoteRoot, remotePath).trim();
+                }
+                if (pathRelativeToSourceRoot.startsWith(path.sep)){
+                    pathRelativeToSourceRoot = pathRelativeToSourceRoot.substring(1);
+                }
+                // resolve from the local source root
+                return path.resolve(this.attachArgs.localRoot, pathRelativeToSourceRoot);
             }
-            // resolve from the local source root
-            return path.resolve(this.attachArgs.localRoot, pathRelativeToSourceRoot);
         } else {
             return remotePath;
         }
