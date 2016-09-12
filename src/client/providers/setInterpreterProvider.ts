@@ -75,47 +75,44 @@ export function activateSetInterpreterProvider() {
     vscode.commands.registerCommand("python.setInterpreter", setInterpreter);
 }
 
-function lookForInterpretersInPath(pathToCheck: string): Promise<string[]> {
-    return new Promise<string[]>(resolve => {
-        // Now look for Interpreters in this directory
-        fs.readdir(pathToCheck, (err, subDirs) => {
+function readdirPromise(dir: string) {
+    return new Promise<string[]>(
+        (resolve, reject) => fs.readdir(dir, (err, filenames) => {
             if (err) {
-                return resolve([]);
+                reject();
+            } else {
+                resolve(filenames);
             }
-            const interpreters = subDirs
-                .filter(subDir => CHECK_PYTHON_INTERPRETER_REGEXP.test(subDir))
-                .map(subDir => path.join(pathToCheck, subDir));
-            resolve(interpreters);
-        });
-    });
+        }))
 }
-function lookForInterpretersInVirtualEnvs(pathToCheck: string): Promise<PythonPathSuggestion[]> {
-    return new Promise<PythonPathSuggestion[]>(resolve => {
-        // Now look for Interpreters in this directory
-        fs.readdir(pathToCheck, (err, subDirs) => {
-            if (err) {
-                return resolve([]);
-            }
-            const envsInterpreters = [];
-            const promises = subDirs.map(subDir => {
-                subDir = path.join(pathToCheck, subDir);
-                const interpreterFolder = utils.IS_WINDOWS ? path.join(subDir, 'scripts') : path.join(subDir, 'bin');
-                return lookForInterpretersInPath(interpreterFolder);
-            });
-            Promise.all<string[]>(promises).then(pathsWithInterpreters => {
-                pathsWithInterpreters.forEach(interpreters => {
-                    interpreters.map(interpter => {
-                        envsInterpreters.push({
-                            label: path.basename(interpter), path: interpter, type: ''
-                        });
-                    })
-                });
 
-                resolve(envsInterpreters);
-            })
+function lookForInterpretersInDirectory(pathToCheck: string): Promise<string[]> {
+    return readdirPromise(pathToCheck).then(filenames => {
+            return filenames
+                .filter(isPythonInterpreter)
+                .map(filename => path.join(pathToCheck, filename));
         });
+}
+
+function lookForInterpretersInVirtualEnvs(pathToCheck: string): Promise<PythonPathSuggestion[]> {
+    return readdirPromise(pathToCheck).then(filenames => {
+
+        const promises = filenames.map(filename => {
+            const dirPath = path.join(pathToCheck, filename);
+            const interpreterFolder = utils.IS_WINDOWS ? path.join(dirPath, 'scripts') : path.join(dirPath, 'bin');
+
+            return lookForInterpretersInDirectory(interpreterFolder)
+                .then(paths => paths.map(interpreterPath => ({
+                        path: interpreterPath,
+                        label: path.basename(interpreterPath), 
+                        type: ''
+                    }))
+        });
+
+        return Promise.all<PythonPathSuggestion[]>(promises)
     });
 }
+
 function suggestionsFromKnownPaths(): Promise<PythonPathSuggestion[]> {
     return new Promise(resolve => {
         const validPaths = getSearchPaths().map(p => {
@@ -124,7 +121,7 @@ function suggestionsFromKnownPaths(): Promise<PythonPathSuggestion[]> {
                     return Promise.resolve<string[]>([]);
                 }
 
-                return lookForInterpretersInPath(validatedPath);
+                return lookForInterpretersInDirectory(validatedPath);
             });
         });
         Promise.all<string[]>(validPaths).then(listOfInterpreters => {
