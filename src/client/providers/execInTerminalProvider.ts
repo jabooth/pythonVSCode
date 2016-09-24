@@ -1,7 +1,8 @@
-"use strict";
-import * as vscode from "vscode";
-import * as settings from "../common/configSettings";
+'use strict';
+import * as vscode from 'vscode';
+import * as settings from '../common/configSettings';
 import { Commands } from '../common/constants';
+let path = require('path');
 
 export function activateExecInTerminalProvider() {
     vscode.commands.registerCommand(Commands.Exec_In_Terminal, execInTerminal);
@@ -9,14 +10,15 @@ export function activateExecInTerminalProvider() {
 }
 
 function execInTerminal(fileUri?: vscode.Uri) {
-    const currentPythonPath = settings.PythonSettings.getInstance().pythonPath;
+    let pythonSettings = settings.PythonSettings.getInstance();
+    const currentPythonPath = pythonSettings.pythonPath;
     let filePath: string;
 
     if (fileUri === undefined) {
         const activeEditor = vscode.window.activeTextEditor;
         if (activeEditor !== undefined) {
             if (!activeEditor.document.isUntitled) {
-                if (activeEditor.document.languageId == "python") {
+                if (activeEditor.document.languageId === 'python') {
                     filePath = activeEditor.document.fileName;
                 } else {
                     vscode.window.showErrorMessage('The active file is not a Python source file');
@@ -34,9 +36,20 @@ function execInTerminal(fileUri?: vscode.Uri) {
         filePath = fileUri.fsPath;
     }
 
-    const terminal = (<any>vscode.window).createTerminal(`Python`);
-    terminal.sendText(`${currentPythonPath} ${filePath}`);
-
+    if (filePath.indexOf(' ') > 0) {
+        filePath = `"${filePath}"`;
+    }
+    const terminal = vscode.window.createTerminal(`Python`);
+    if (pythonSettings.terminal && pythonSettings.terminal.executeInFileDir) {
+        const fileDirPath = path.dirname(filePath).substring(1);
+        if (fileDirPath !== vscode.workspace.rootPath) {
+            terminal.sendText(`cd "${fileDirPath}"`);
+        }
+    }
+    const launchArgs = settings.PythonSettings.getInstance().terminal.launchArgs;
+    const launchArgsString = launchArgs.length > 0 ? " ".concat(launchArgs.join(" ")) : "";
+    terminal.sendText(`${currentPythonPath}${launchArgsString} ${filePath}`);
+    terminal.show();
 }
 
 function execSelectionInTerminal() {
@@ -47,10 +60,13 @@ function execSelectionInTerminal() {
     }
 
     const selection = vscode.window.activeTextEditor.selection;
-    if (selection.isEmpty){
+    if (selection.isEmpty) {
         return;
     }
     const code = vscode.window.activeTextEditor.document.getText(new vscode.Range(selection.start, selection.end));
-    const terminal = (<any>vscode.window).createTerminal(`Python`);
-    terminal.sendText(`${currentPythonPath} -c "${code}"`);
+    const terminal = vscode.window.createTerminal(`Python`);
+    const launchArgs = settings.PythonSettings.getInstance().terminal.launchArgs;
+    const launchArgsString = launchArgs.length > 0 ? " ".concat(launchArgs.join(" ")) : "";
+    terminal.sendText(`${currentPythonPath}${launchArgsString} -c "${code}"`);
+    terminal.show();
 }

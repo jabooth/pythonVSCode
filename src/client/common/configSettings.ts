@@ -12,6 +12,8 @@ export interface IPythonSettings {
     formatting: IFormattingSettings;
     unitTest: IUnitTestSettings;
     autoComplete: IAutoCompeteSettings;
+    terminal: ITerminalSettings;
+    jupyter: JupyterSettings;
 }
 export interface IUnitTestSettings {
     nosetestsEnabled: boolean;
@@ -66,6 +68,16 @@ export interface IFormattingSettings {
 export interface IAutoCompeteSettings {
     extraPaths: string[];
 }
+export interface ITerminalSettings {
+    executeInFileDir: boolean;
+    launchArgs: string[];
+}
+export interface JupyterSettings {
+    appendResults: boolean;
+    defaultKernel: string;
+    startupCode: string[];
+}
+
 const systemVariables: SystemVariables = new SystemVariables();
 export class PythonSettings extends EventEmitter implements IPythonSettings {
     private static pythonSettings: PythonSettings = new PythonSettings();
@@ -135,6 +147,15 @@ export class PythonSettings extends EventEmitter implements IPythonSettings {
         this.unitTest.nosetestArgs = this.unitTest.nosetestArgs.map(arg => systemVariables.resolveAny(arg));
         this.unitTest.pyTestArgs = this.unitTest.pyTestArgs.map(arg => systemVariables.resolveAny(arg));
         this.unitTest.unittestArgs = this.unitTest.unittestArgs.map(arg => systemVariables.resolveAny(arg));
+
+        let terminalSettings = systemVariables.resolveAny(pythonSettings.get<ITerminalSettings>('terminal'));
+        if (this.terminal) {
+            Object.assign<ITerminalSettings, ITerminalSettings>(this.terminal, terminalSettings);
+        }
+        else {
+            this.terminal = terminalSettings;
+        }
+        this.jupyter = pythonSettings.get<JupyterSettings>('jupyter');
     }
 
     public pythonPath: string;
@@ -143,10 +164,12 @@ export class PythonSettings extends EventEmitter implements IPythonSettings {
     public formatting: IFormattingSettings;
     public autoComplete: IAutoCompeteSettings;
     public unitTest: IUnitTestSettings;
+    public terminal: ITerminalSettings;
+    public jupyter: JupyterSettings;
 }
 
 function getAbsolutePath(pathToCheck: string, rootDir: String): string {
-    if (pathToCheck.indexOf(path.sep) === -1){
+    if (pathToCheck.indexOf(path.sep) === -1) {
         return pathToCheck;
     }
     return path.isAbsolute(pathToCheck) ? pathToCheck : path.resolve(rootDir, pathToCheck);

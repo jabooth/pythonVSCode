@@ -107,7 +107,13 @@ Your feedback is crucial in prioritizing the items and in determining whether we
 
 ## [Change Log](https://github.com/DonJayamanne/pythonVSCode/releases)
 
-### Current Version 0.3.23
+### Current Version 0.3.24
+* Added support for clearing cached tests [#307](https://github.com/DonJayamanne/pythonVSCode/issues/307)
+* Added support for executing files in terminal with spaces in paths [#308](https://github.com/DonJayamanne/pythonVSCode/issues/308)
+* Fix issue related to running unittests on Windows [#309](https://github.com/DonJayamanne/pythonVSCode/issues/309)
+* Support custom environment variables when launching external terminal [#311](https://github.com/DonJayamanne/pythonVSCode/issues/311)
+
+### Version 0.3.23
 * Added support for the attribute supportsRunInTerminal attribute in debugger [#304](https://github.com/DonJayamanne/pythonVSCode/issues/304)
 * Changes to ensure remote debugging resolves remote paths correctly [#302](https://github.com/DonJayamanne/pythonVSCode/issues/302)
 * Added support for custom pytest and nosetest paths [#301](https://github.com/DonJayamanne/pythonVSCode/issues/301)
@@ -125,7 +131,7 @@ Your feedback is crucial in prioritizing the items and in determining whether we
 * Displaying errors in variable explorer when debugging [#271](https://github.com/DonJayamanne/pythonVSCode/issues/271)
 * Ability to debug applications as sudo [#224](https://github.com/DonJayamanne/pythonVSCode/issues/224)
 * Fixed debugger crashes [#263](https://github.com/DonJayamanne/pythonVSCode/issues/263)
-* Asynchronour display of unit tests [#190](https://github.com/DonJayamanne/pythonVSCode/issues/190)
+* Asynchronous display of unit tests [#190](https://github.com/DonJayamanne/pythonVSCode/issues/190)
 * Fixed issues when using relative paths in ```settings.json``` [#276](https://github.com/DonJayamanne/pythonVSCode/issues/276)
 * Fixes issue of hardcoding interpreter command arguments [#256](https://github.com/DonJayamanne/pythonVSCode/issues/256)
 * Fixes resolving of remote paths when debugging remote applications [#252](https://github.com/DonJayamanne/pythonVSCode/issues/252)
@@ -134,7 +140,9 @@ Your feedback is crucial in prioritizing the items and in determining whether we
 - [James Booth](https://github.com/jabooth)
   + Selecting interpreter and updating ```settings.json``` [#257](https://github.com/DonJayamanne/pythonVSCode/issues/257)
   + Running a file or selection in terminal [#261](https://github.com/DonJayamanne/pythonVSCode/wiki/Miscellaneous#execute-in-python-terminal)
-  + Asynchronour display of unit tests [#190](https://github.com/DonJayamanne/pythonVSCode/issues/190)
+  + Asynchronous display of unit tests [#190](https://github.com/DonJayamanne/pythonVSCode/issues/190)
+- [QIU Quan](https://github.com/jackqq)
+  + Changes to ensure remote debugging resolves remote paths correctly [#302](https://github.com/DonJayamanne/pythonVSCode/issues/302)
     
 ## Source
 

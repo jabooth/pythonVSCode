@@ -1,6 +1,8 @@
 'use strict';
-
+// TODO: Cleanup this place
+// Add options for execPythonFile
 import * as path from 'path';
+import * as os from 'os';
 import * as fs from 'fs';
 import * as child_process from 'child_process';
 import * as settings from './configSettings';
@@ -90,7 +92,6 @@ export function execPythonFile(file: string, args: string[], cwd: string, includ
         }
 
         if (customEnvVariables === null) {
-            let pathValue = <string>process.env[PATH_VARIABLE_NAME];
             // Ensure to include the path of the current python 
             let newPath = '';
             if (IS_WINDOWS) {
@@ -210,4 +211,20 @@ export function mergeEnvVariables(newVariables: { [key: string]: string }): any 
     }
 
     return newVariables;
+}
+
+export function formatErrorForLogging(error: Error | string): string {
+    let message: string = '';
+    if (typeof error === 'string') {
+        message = error;
+    }
+    else {
+        if (error.message) {
+            message = `Error Message: ${error.message}`;
+        }
+        if (error.name && error.message.indexOf(error.name) === -1) {
+            message += `, (${error.message})`;
+        }
+    }
+    return message;
 }

@@ -2,7 +2,7 @@
   "name": "python",
   "displayName": "Python",
   "description": "Linting, Debugging (multi-threaded, remote), Intellisense, code formatting, refactoring, unit tests, snippets, and more.",
-  "version": "0.3.23",
+  "version": "0.3.24",
   "publisher": "donjayamanne",
   "author": {
     "name": "Don Jayamanne",
@@ -23,7 +23,7 @@
     "theme": "dark"
   },
   "engines": {
-    "vscode": "^0.10.8"
+    "vscode": "^1.5.0"
   },
   "categories": [
     "Languages",
@@ -42,7 +42,10 @@
     "onCommand:python.viewTestOutput",
     "onCommand:python.selectAndRunTestMethod",
     "onCommand:python.runFailedTests",
-    "onCommand:python.execSelectionInTerminal"
+    "onCommand:python.execSelectionInTerminal",
+    "onCommand:jupyter.runSelectionLine",
+    "onCommand:jupyter.execCurrentCell",
+    "onCommand:jupyter.execCurrentCellAndAdvance"
   ],
   "main": "./out/client/extension",
   "contributes": {
@@ -65,7 +68,7 @@
       },
       {
         "command": "python.execInTerminal",
-        "title": "Run Python file in Terminal",
+        "title": "Run Python File in Terminal",
         "category": "Python"
       },
       {
@@ -102,6 +105,31 @@
         "command": "python.execSelectionInTerminal",
         "title": "Run Selection in Python Terminal",
         "category": "Python"
+      },
+      {
+        "command": "jupyter.runSelectionLine",
+        "title": "Run selection/line",
+        "category": "Jupyter"
+      },
+      {
+        "command": "jupyter:execCurrentCell",
+        "title": "Run cell",
+        "category": "Jupyter"
+      },
+      {
+        "command": "jupyter:execCurrentCellAndAdvance",
+        "title": "Run cell and advance",
+        "category": "Jupyter"
+      },
+      {
+        "command": "jupyter:gotToPreviousCell",
+        "title": "Go to previous cell",
+        "category": "Jupyter"
+      },
+      {
+        "command": "jupyter:gotToNextCell",
+        "title": "Go to next cell",
+        "category": "Jupyter"
       }
     ],
     "menus": {
@@ -189,10 +217,14 @@
                 "default": false
               },
               "console": {
-								"enum": [ "none", "integratedTerminal", "externalTerminal" ],
-								"description": "Where to launch the debug target: internal console, integrated terminal, or external terminal.",
-								"default": "none"
-							},
+                "enum": [
+                  "none",
+                  "integratedTerminal",
+                  "externalTerminal"
+                ],
+                "description": "Where to launch the debug target: internal console, integrated terminal, or external terminal.",
+                "default": "none"
+              },
               "cwd": {
                 "type": "string",
                 "description": "Absolute path to the working directory of the program being debugged. Default is the root directory of the file (leave null).",
@@ -310,7 +342,7 @@
             "stopOnEntry": true,
             "pythonPath": "${config.python.pythonPath}",
             "program": "${file}",
-            "console": "integratedTerminal", 
+            "console": "integratedTerminal",
             "debugOptions": [
               "WaitOnAbnormalExit",
               "WaitOnNormalExit"
@@ -323,7 +355,7 @@
             "stopOnEntry": true,
             "pythonPath": "${config.python.pythonPath}",
             "program": "${file}",
-            "console": "externalTerminal", 
+            "console": "externalTerminal",
             "debugOptions": [
               "WaitOnAbnormalExit",
               "WaitOnNormalExit"
@@ -354,8 +386,7 @@
             "stopOnEntry": true,
             "pythonPath": "${config.python.pythonPath}",
             "program": "${workspaceRoot}/run.py",
-            "args": [
-            ],
+            "args": [],
             "debugOptions": [
               "WaitOnAbnormalExit",
               "WaitOnNormalExit",
@@ -666,7 +697,9 @@
         "python.unitTest.unittestArgs": {
           "type": "array",
           "description": "Arguments passed in. Each argument is a separate item in the array.",
-          "default": ["-v"],
+          "default": [
+            "-v"
+          ],
           "items": {
             "type": "string"
           }
@@ -675,26 +708,66 @@
           "type": "string",
           "default": "Python Test Log",
           "description": "The output window name for the unit test messages, defaults to Python output window."
+        },
+        "python.terminal.executeInFileDir": {
+          "type": "boolean",
+          "default": false,
+          "description": "When executing a file in the terminal, whether to use execute in the file's directory, instead of the current open folder."
+        },
+        "python.terminal.launchArgs": {
+          "type": "array",
+          "default": [],
+          "description": "Python launch arguments to use when executing a file in the terminal."
+        },
+        "python.jupyter.appendResults": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to appen the results to results window, else clear and display."
+        },
+        "python.jupyter.defaultKernel": {
+          "type": "string",
+          "default": "",
+          "description": "Default kernel to be used. By default the first available kernel is used."
+        },
+        "python.jupyter.startupCode": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["%matplotlib inline"],
+          "description": "Code executed when the kernel starts. Such as the default of '%matplotlib inline'. Individual lines can be placed in separate items of the array."
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "node ./node_modules/vscode/bin/compile",
-    "compile": "node ./node_modules/vscode/bin/compile  -watch -p ./ && installServerIntoExtension ./out ./src/server/package.json ./src/server/tsconfig.json",
+    "vscode:prepublish": "node ./node_modules/vscode/bin/compile && webpack",
+    "compile": "webpack && node ./node_modules/vscode/bin/compile  -watch -p ./ && installServerIntoExtension ./out ./src/server/package.json ./src/server/tsconfig.json",
     "postinstall": "node ./node_modules/vscode/bin/install",
     "test": "node ./node_modules/vscode/bin/test"
   },
   "dependencies": {
+    "@types/jquery": "^1.10.31",
+    "@types/socket.io": "^1.4.27",
+    "@types/socket.io-client": "^1.4.27",
+    "@types/uuid": "^3.3.27",
+    "anser": "^1.1.0",
     "copy-paste": "^1.3.0",
     "diff-match-patch": "^1.0.0",
     "fs-extra": "^0.30.0",
+    "jmp": "^0.4.0",
+    "jupyter-js-services": "^0.18.1",
     "line-by-line": "^0.1.4",
     "named-js-regexp": "^1.3.1",
     "prepend-file": "^1.3.0",
+    "socket.io": "^1.4.8",
+    "spawnteract": "^2.2.0",
     "tmp": "0.0.28",
+    "transformime": "^3.1.2",
+    "transformime-marked": "0.0.1",
     "tree-kill": "^1.0.0",
     "uint64be": "^1.0.1",
+    "uuid": "^2.0.2",
     "vscode-debugadapter": "^1.0.1",
     "vscode-debugprotocol": "^1.0.1",
     "vscode-extension-telemetry": "0.0.5",
@@ -703,8 +776,14 @@
     "xml2js": "^0.4.17"
   },
   "devDependencies": {
+    "babel-core": "^6.14.0",
+    "babel-loader": "^6.2.5",
+    "babel-preset-es2015": "^6.14.0",
+    "ignore-loader": "^0.1.1",
     "retyped-diff-match-patch-tsd-ambient": "^1.0.0-0",
+    "ts-loader": "^0.8.2",
     "typescript": "^1.8.5",
-    "vscode": "^0.11.0"
+    "vscode": "^0.11.0",
+    "webpack": "^1.13.2"
   }
 }

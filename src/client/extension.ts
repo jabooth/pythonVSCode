@@ -12,24 +12,23 @@ import {LintProvider} from './providers/lintProvider';
 import {PythonSymbolProvider} from './providers/symbolProvider';
 import {PythonSignatureProvider} from './providers/signatureProvider';
 import {activateFormatOnSaveProvider} from './providers/formatOnSaveProvider';
-import * as path from 'path';
 import * as settings from './common/configSettings';
 import * as telemetryHelper from './common/telemetry';
 import * as telemetryContracts from './common/telemetryContracts';
 import {PythonCodeActionsProvider} from './providers/codeActionProvider';
 import {activateSimplePythonRefactorProvider} from './providers/simpleRefactorProvider';
 import {activateSetInterpreterProvider} from './providers/setInterpreterProvider';
-import {activateExecInTerminalProvider} from './providers/execInTerminalProvider'
+import {activateExecInTerminalProvider} from './providers/execInTerminalProvider';
 import * as tests from './unittests/main';
+import * as jup from './jupyter/main';
 
 const PYTHON: vscode.DocumentFilter = { language: 'python', scheme: 'file' };
-let pythonOutputChannel: vscode.OutputChannel;
 let unitTestOutChannel: vscode.OutputChannel;
 let formatOutChannel: vscode.OutputChannel;
 let lintingOutChannel: vscode.OutputChannel;
+let jupMain: jup.Jupyter;
 
 export function activate(context: vscode.ExtensionContext) {
-    let rootDir = context.asAbsolutePath('.');
     let pythonSettings = settings.PythonSettings.getInstance();
     telemetryHelper.sendTelemetryEvent(telemetryContracts.EVENT_LOAD, {
         CodeComplete_Has_ExtraPaths: pythonSettings.autoComplete.extraPaths.length > 0 ? 'true' : 'false',
@@ -81,6 +80,10 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(vscode.languages.registerCodeActionsProvider(PYTHON, new PythonCodeActionsProvider(context)));
 
     tests.activate(context, unitTestOutChannel);
+
+    jupMain = new jup.Jupyter(lintingOutChannel);
+    jupMain.activate(null);
+    context.subscriptions.push(jupMain);
 
     // Possible this extension loads before the others, so lets wait for 5 seconds
     setTimeout(disableOtherDocumentSymbolsProvider, 5000);
